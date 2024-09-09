@@ -1,0 +1,9 @@
+[package]
+name = "abrw-2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glib = "0.15.2"
+gtk = "0.18.1"
+webkit2gtk = "2.0.1"

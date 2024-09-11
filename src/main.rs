@@ -2,12 +2,108 @@ extern crate glib;
 extern crate gtk;
 extern crate webkit2gtk;
 
+use adblock::{
+    blocker::BlockerResult,
+    lists::{FilterSet, ParseOptions},
+    request::Request,
+    Engine,
+};
 use gtk::{glib::Propagation, prelude::*};
+use reqwest::blocking;
 use std::env;
-use webkit2gtk::{SettingsExt, WebViewExt};
+use std::error::Error;
+use url::Url;
+use webkit2gtk::{SettingsExt, URIRequestExt, WebViewExt};
 
-fn add_webview_tab(notebook: &gtk::Notebook, url: &str, title: &str, search_entry: &gtk::Entry) {
+fn fetch_block_list(url: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    println!("Fetching block lists");
+    let response = blocking::get(url)?;
+    let block_list = response
+        .text()?
+        .lines()
+        .map(|line| line.to_string())
+        .collect::<Vec<String>>();
+
+    Ok(block_list)
+}
+
+fn on_resource_load_started(
+    _webview: &webkit2gtk::WebView,
+    _resource: &webkit2gtk::WebResource,
+    request: &webkit2gtk::URIRequest,
+    engine: &Engine,
+) {
+    if let Some(url_string) = request.uri() {
+        match Url::parse(&url_string) {
+            Ok(url) => {
+                let domain = match url.host_str() {
+                    Some(domain) => domain,
+                    None => {
+                        eprintln!("Failed to parse domain from URL: {}", url_string);
+                        return; // Exit early if there's no valid domain
+                    }
+                };
+
+                let request2 = Request::new(&url.to_string(), domain, "");
+                match request2 {
+                    Ok(req) => {
+                        let result = engine.check_network_request(&req);
+                        match result {
+                            BlockerResult {
+                                matched: true,
+                                important,
+                                redirect,
+                                rewritten_url,
+                                exception,
+                                filter,
+                            } => {
+                                if important {
+                                    println!(
+                                        "Request matched an important rule and should be blocked."
+                                    );
+                                } else {
+                                    println!("Request matched a non-important rule.");
+                                    if let Some(redirect_url) = redirect {
+                                        println!("Redirecting to: {}", redirect_url);
+                                    } else if let Some(rewritten_url) = rewritten_url {
+                                        println!("Rewritten URL: {}", rewritten_url);
+                                    } else if let Some(exception) = exception {
+                                        println!("Request is an exception: {}", exception);
+                                    } else if let Some(filter) = filter {
+                                        println!("Request matched filter: {}", filter);
+
+                                        // BLOCK ADS HERE
+                                        // i dont know how
+                                    }
+                                }
+                            }
+                            BlockerResult { matched: false, .. } => {
+                                println!("Request did not match any block.");
+                            }
+                        }
+                    }
+                    Err(err) => eprintln!("Error creating request: {}", err),
+                }
+            }
+            Err(err) => eprintln!("Error parsing URL {}: {}", url_string, err),
+        }
+    }
+}
+
+fn add_webview_tab(
+    notebook: &gtk::Notebook,
+    url: &str,
+    title: &str,
+    search_entry: &gtk::Entry,
+    filter_set: &FilterSet,
+) {
     let webview = webkit2gtk::WebView::new();
+
+    let engine = Engine::from_filter_set(filter_set.clone(), true);
+
+    webview.connect_resource_load_started(move |webview, resource, request| {
+        on_resource_load_started(webview, resource, request, &engine);
+    });
 
     let settings = WebViewExt::settings(&webview).unwrap();
     settings.set_enable_developer_extras(true);
@@ -78,6 +174,64 @@ fn main() {
         }
         Propagation::Stop
     });
+
+    let mut rules = vec![
+        String::from("-advertisement-icon."),
+        String::from("-advertisement-management/"),
+        String::from("-advertisement."),
+        String::from("-advertisement/script."),
+    ];
+
+    let debug_info = true;
+    let mut filter_set = FilterSet::new(debug_info);
+
+    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-social.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-chat.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-annoyances.txt";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
+
+    let github_url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+    if let Ok(fetched_rules) = fetch_block_list(github_url) {
+        rules.extend(fetched_rules);
+        filter_set.add_filters(&rules, ParseOptions::default());
+    }
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -257,6 +411,7 @@ fn main() {
         "https://start.duckduckgo.com/",
         "New tab",
         &search_entry,
+        &filter_set,
     );
 
     search_entry.connect_activate({
@@ -357,6 +512,7 @@ fn main() {
     new_tab_button.connect_clicked({
         let notebook = notebook.clone();
         let search_entry = search_entry.clone();
+        let filter_set = filter_set.clone();
 
         move |_| {
             add_webview_tab(
@@ -364,6 +520,7 @@ fn main() {
                 "https://start.duckduckgo.com/",
                 "New tab",
                 &search_entry,
+                &filter_set,
             )
         }
     });

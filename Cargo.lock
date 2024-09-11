@@ -10,6 +10,7 @@ dependencies = [
  "glib 0.15.12",
  "gtk",
  "reqwest",
+ "url",
  "webkit2gtk",
 ]
 

@@ -28,7 +28,7 @@ fn fetch_block_list(url: &str) -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 fn on_resource_load_started(
-    _webview: &webkit2gtk::WebView,
+    webview: &webkit2gtk::WebView,
     _resource: &webkit2gtk::WebResource,
     request: &webkit2gtk::URIRequest,
     engine: &Engine,
@@ -39,8 +39,7 @@ fn on_resource_load_started(
                 let domain = match url.host_str() {
                     Some(domain) => domain,
                     None => {
-                        eprintln!("Failed to parse domain from URL: {}", url_string);
-                        return; // Exit early if there's no valid domain
+                        return;
                     }
                 };
 
@@ -72,14 +71,11 @@ fn on_resource_load_started(
                                     } else if let Some(filter) = filter {
                                         println!("Request matched filter: {}", filter);
 
-                                        // BLOCK ADS HERE
-                                        // i dont know how
+                                        webview.stop_loading()
                                     }
                                 }
                             }
-                            BlockerResult { matched: false, .. } => {
-                                println!("Request did not match any block.");
-                            }
+                            BlockerResult { matched: false, .. } => {}
                         }
                     }
                     Err(err) => eprintln!("Error creating request: {}", err),

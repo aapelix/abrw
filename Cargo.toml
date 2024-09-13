@@ -10,3 +10,4 @@ webkit2gtk = "2.0.1"
 reqwest = { version = "0.11", features = ["blocking"] }
 adblock = "0.8.12"
 url = "2.5.2"
+rayon = "1.10.0"

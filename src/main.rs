@@ -2,156 +2,17 @@ extern crate glib;
 extern crate gtk;
 extern crate webkit2gtk;
 
-use adblock::{
-    blocker::BlockerResult,
-    lists::{FilterSet, ParseOptions},
-    request::Request,
-    Engine,
-};
+mod adblock_abrw;
+mod connections;
+mod tabs;
+
+use adblock::lists::{FilterSet, ParseOptions};
 use gtk::{glib::Propagation, prelude::*};
-use reqwest::blocking;
-use std::env;
-use std::error::Error;
-use url::Url;
-use webkit2gtk::{SettingsExt, URIRequestExt, WebViewExt};
-
-fn fetch_block_list(url: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    println!("Fetching block lists");
-    let response = blocking::get(url)?;
-    let block_list = response
-        .text()?
-        .lines()
-        .map(|line| line.to_string())
-        .collect::<Vec<String>>();
-
-    Ok(block_list)
-}
-
-fn on_resource_load_started(
-    webview: &webkit2gtk::WebView,
-    _resource: &webkit2gtk::WebResource,
-    request: &webkit2gtk::URIRequest,
-    engine: &Engine,
-) {
-    if let Some(url_string) = request.uri() {
-        match Url::parse(&url_string) {
-            Ok(url) => {
-                let domain = match url.host_str() {
-                    Some(domain) => domain,
-                    None => {
-                        return;
-                    }
-                };
-
-                let request2 = Request::new(&url.to_string(), domain, "");
-                match request2 {
-                    Ok(req) => {
-                        let result = engine.check_network_request(&req);
-                        match result {
-                            BlockerResult {
-                                matched: true,
-                                important,
-                                redirect,
-                                rewritten_url,
-                                exception,
-                                filter,
-                            } => {
-                                if important {
-                                    println!(
-                                        "Request matched an important rule and should be blocked."
-                                    );
-                                } else {
-                                    println!("Request matched a non-important rule.");
-                                    if let Some(redirect_url) = redirect {
-                                        println!("Redirecting to: {}", redirect_url);
-                                    } else if let Some(rewritten_url) = rewritten_url {
-                                        println!("Rewritten URL: {}", rewritten_url);
-                                    } else if let Some(exception) = exception {
-                                        println!("Request is an exception: {}", exception);
-                                    } else if let Some(filter) = filter {
-                                        println!("Request matched filter: {}", filter);
-
-                                        webview.stop_loading()
-                                    }
-                                }
-                            }
-                            BlockerResult { matched: false, .. } => {}
-                        }
-                    }
-                    Err(err) => eprintln!("Error creating request: {}", err),
-                }
-            }
-            Err(err) => eprintln!("Error parsing URL {}: {}", url_string, err),
-        }
-    }
-}
-
-fn add_webview_tab(
-    notebook: &gtk::Notebook,
-    url: &str,
-    title: &str,
-    search_entry: &gtk::Entry,
-    filter_set: &FilterSet,
-) {
-    let webview = webkit2gtk::WebView::new();
-
-    let engine = Engine::from_filter_set(filter_set.clone(), true);
-
-    webview.connect_resource_load_started(move |webview, resource, request| {
-        on_resource_load_started(webview, resource, request, &engine);
-    });
-
-    let settings = WebViewExt::settings(&webview).unwrap();
-    settings.set_enable_developer_extras(true);
-
-    webview.load_uri(url);
-
-    let search_entry_clone = search_entry.clone();
-    webview.connect_notify_local(Some("uri"), move |webview, _| {
-        if let Some(uri) = webview.uri() {
-            search_entry_clone.set_text(&uri);
-        }
-    });
-
-    let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-
-    // Create the tab label
-    let label = gtk::Label::new(Some(title));
-    label.set_hexpand(true);
-    label.set_vexpand(false);
-
-    hbox.pack_start(&label, true, true, 10);
-
-    let close_button = gtk::Button::new();
-
-    close_button.set_size_request(25, 25);
-
-    let close_label = gtk::Label::new(Some("X"));
-    close_button.set_relief(gtk::ReliefStyle::None);
-    close_button.add(&close_label);
-
-    hbox.pack_start(&close_button, false, false, 0);
-
-    let new_tab_index = notebook.append_page(&webview, Some(&hbox));
-
-    webview.show();
-    label.show();
-    close_label.show();
-    close_button.show();
-    hbox.show();
-
-    notebook.set_current_page(Some(new_tab_index));
-
-    let notebook_clone = notebook.clone();
-    close_button.connect_clicked(move |_| {
-        notebook_clone.remove_page(Some(new_tab_index));
-    });
-}
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
+use webkit2gtk::WebViewExt;
 
 fn main() {
-    env::set_var("WEBKIT_FORCE_ACCELERATED_COMPOSITING", "1");
-    env::set_var("WEBKIT_FORCE_HARDWARE_ACCELERATION", "1");
-
     gtk::init().unwrap();
 
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
@@ -171,63 +32,46 @@ fn main() {
         Propagation::Stop
     });
 
-    let mut rules = vec![
+    let initial_rules = vec![
         String::from("-advertisement-icon."),
         String::from("-advertisement-management/"),
         String::from("-advertisement."),
         String::from("-advertisement/script."),
+
+        String::from("youtube.com##+js(set,yt.config_.openPopupConfig.supportedPopups.adBlockMessageViewModel, false)"),
+        String::from("youtube.com##+js(set, Object.prototype.adBlocksFound, 0)"),
+        String::from("youtube.com##+js(set, ytplayer.config.args.raw_player_response.adPlacements, [])"),
+        String::from("youtube.com##+js(set, Object.prototype.hasAllowedInstreamAd, true)"),
     ];
 
-    let debug_info = true;
-    let mut filter_set = FilterSet::new(debug_info);
+    let urls = vec![
+        "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt",
+        "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt",
+        "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt",
+        "https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt",
+        "https://ublockorigin.github.io/uAssets/thirdparties/easylist-social.txt",
+        "https://ublockorigin.github.io/uAssets/thirdparties/easylist-chat.txt",
+        "https://ublockorigin.github.io/uAssets/thirdparties/easylist-annoyances.txt",
+        "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+    ];
 
-    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
+    let rules = Arc::new(Mutex::new(initial_rules));
 
-    let github_url = "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
+    // Enable parallel-safe mutable access to `filter_set` using Arc and Mutex
+    let filter_set = Arc::new(Mutex::new(FilterSet::new(true)));
 
-    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
+    // Process each URL in parallel
+    urls.par_iter().for_each(|url| {
+        if let Ok(fetched_rules) = adblock_abrw::fetch_block_list(url) {
+            // Lock the Mutex to safely access and modify `rules`
+            let mut rules_guard = rules.lock().unwrap();
+            rules_guard.extend(fetched_rules);
 
-    let github_url = "https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
-
-    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-social.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
-
-    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-chat.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
-
-    let github_url = "https://ublockorigin.github.io/uAssets/thirdparties/easylist-annoyances.txt";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
-
-    let github_url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
-    if let Ok(fetched_rules) = fetch_block_list(github_url) {
-        rules.extend(fetched_rules);
-        filter_set.add_filters(&rules, ParseOptions::default());
-    }
+            // Lock the Mutex to safely access and modify `filter_set`
+            let mut filter_set_guard = filter_set.lock().unwrap();
+            filter_set_guard.add_filters(&*rules_guard, ParseOptions::default());
+        }
+    });
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -402,24 +246,22 @@ fn main() {
     vbox.pack_start(&hbox, false, false, 15);
     vbox.pack_start(&notebook, true, true, 5);
 
-    add_webview_tab(
+    tabs::add_webview_tab(
         &notebook,
         "https://start.duckduckgo.com/",
         "New tab",
         &search_entry,
-        &filter_set,
+        &filter_set.clone(),
     );
 
     search_entry.connect_activate({
         let notebook = notebook.clone();
-        let entry = search_entry.clone();
 
-        move |_| {
+        move |search_entry| {
             let current_page = notebook.current_page();
+            let url = search_entry.text();
             if let Some(widget) = notebook.nth_page(current_page) {
                 if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    let url = entry.text();
-
                     if url.is_empty() {
                         return;
                     }
@@ -462,83 +304,18 @@ fn main() {
         window_clone.close(); // Close the window
     });
 
-    back_button.connect_clicked({
-        let notebook = notebook.clone();
-
-        move |_| {
-            let current_page = notebook.current_page();
-            if let Some(widget) = notebook.nth_page(current_page) {
-                if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    if webview.can_go_back() {
-                        webview.go_back();
-                    }
-                }
-            }
-        }
-    });
-
-    forward_button.connect_clicked({
-        let notebook = notebook.clone();
-
-        move |_| {
-            let current_page = notebook.current_page();
-            if let Some(widget) = notebook.nth_page(current_page) {
-                if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    if webview.can_go_forward() {
-                        webview.go_forward();
-                    }
-                }
-            }
-        }
-    });
-
-    refresh_button.connect_clicked({
-        let notebook = notebook.clone();
-
-        move |_| {
-            let current_page = notebook.current_page();
-            if let Some(widget) = notebook.nth_page(current_page) {
-                if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    webview.reload()
-                }
-            }
-        }
-    });
-
-    new_tab_button.connect_clicked({
-        let notebook = notebook.clone();
-        let search_entry = search_entry.clone();
-        let filter_set = filter_set.clone();
-
-        move |_| {
-            add_webview_tab(
-                &notebook,
-                "https://start.duckduckgo.com/",
-                "New tab",
-                &search_entry,
-                &filter_set,
-            )
-        }
-    });
-
-    notebook.connect_switch_page({
-        let search_entry = search_entry.clone();
-
-        move |notebook, _, page_num| {
-            if let Some(widget) = notebook.nth_page(Some(page_num)) {
-                if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    if let Some(uri) = webview.uri() {
-                        search_entry.set_text(&uri);
-                    }
-                }
-            }
-        }
-    });
+    connections::back_button_clicked(&notebook, &back_button);
+    connections::forward_button_clicked(&notebook, &forward_button);
+    connections::refresh_button_clicked(&notebook, &refresh_button);
+    connections::notebook_switch_page(&notebook, &search_entry);
+    connections::new_tab_button_clicked(&new_tab_button, &notebook, &search_entry, &filter_set);
 
     window.connect_delete_event(|_, _| {
         gtk::main_quit();
         Propagation::Stop
     });
+
+    search_entry.set_is_focus(true);
 
     gtk::main();
 }

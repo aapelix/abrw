@@ -11,6 +11,8 @@ dependencies = [
  "gtk",
  "rayon",
  "reqwest",
+ "serde",
+ "serde_json",
  "url",
  "webkit2gtk",
 ]

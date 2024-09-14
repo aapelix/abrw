@@ -2,7 +2,7 @@ extern crate glib;
 extern crate gtk;
 extern crate webkit2gtk;
 
-use crate::adblock_abrw;
+use crate::{adblock_abrw, settings};
 use adblock::{lists::FilterSet, Engine};
 use gtk::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -25,9 +25,19 @@ pub fn add_webview_tab(
         adblock_abrw::on_resource_load_started(webview, resource, request, &engine);
     });
 
-    let settings = WebViewExt::settings(&webview).unwrap();
-    settings.set_enable_developer_extras(true);
-    settings.set_enable_smooth_scrolling(true);
+    let web_view_settings = WebViewExt::settings(&webview).unwrap();
+    let web_view_settings_json = settings::Settings::load();
+
+    // SETTINGS
+    web_view_settings.set_enable_developer_extras(true);
+    web_view_settings.set_enable_smooth_scrolling(true);
+
+    web_view_settings.set_enable_javascript(web_view_settings_json.enable_javascript);
+    web_view_settings.set_enable_webgl(web_view_settings_json.enable_webgl);
+    web_view_settings.set_enable_page_cache(web_view_settings_json.page_cache);
+    web_view_settings.set_media_playback_requires_user_gesture(
+        web_view_settings_json.media_playback_requires_user_gesture,
+    );
 
     webview.load_uri(url);
 

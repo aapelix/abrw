@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
-use webkit2gtk::{SettingsExt, WebViewExt};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Settings {
@@ -148,9 +147,9 @@ pub fn show_settings_window() {
     window.add(&vbox);
     window.show_all();
 }
-
-pub fn toggle_javascript_when_running(webview: webkit2gtk::WebView, toggle: bool) {
-    let settings = WebViewExt::settings(&webview).unwrap();
-
-    settings.set_enable_javascript(toggle);
-}
+// THIS HAS NO USAGE FOR NOW
+// pub fn toggle_javascript_when_running(webview: webkit2gtk::WebView, toggle: bool) {
+//     let settings = WebViewExt::settings(&webview).unwrap();
+//
+//     settings.set_enable_javascript(toggle);
+// }

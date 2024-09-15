@@ -8,3 +8,15 @@ Known bugs/missing features:
 - Settings page has a quite ugly styling
 - Adblocker still WIP (it blocks like 60% of ads, but not like ads on youtube...)
 - No icon
+
+Installation:
+
+Arch:
+```
+sudo pacman -U <the .pkg.tar.zst here>
+```
+
+Other distros:
+```
+sudo i have no idea ☠️
+```

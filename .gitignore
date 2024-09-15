@@ -1,3 +1,7 @@
 /target
 /Abrw.AppDir
 settings.json
+cookies.sqlite
+pkg
+*.tar.zst
+pkgbase

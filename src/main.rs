@@ -11,10 +11,23 @@ use adblock::lists::{FilterSet, ParseOptions};
 use gtk::{glib::Propagation, prelude::*};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
+use webkit2gtk::CookieManagerExt;
+use webkit2gtk::WebContext;
+use webkit2gtk::WebContextExt;
 use webkit2gtk::WebViewExt;
 
 fn main() {
     gtk::init().unwrap();
+
+    let web_context = WebContext::default().unwrap();
+
+    let storage_file_path = "cookies.sqlite";
+    let cookiea = WebContextExt::cookie_manager(&web_context).unwrap();
+    CookieManagerExt::set_persistent_storage(
+        &cookiea,
+        storage_file_path,
+        webkit2gtk::CookiePersistentStorage::Sqlite,
+    );
 
     let window = gtk::Window::new(gtk::WindowType::Toplevel);
     window.set_title("Abrw");
@@ -158,10 +171,6 @@ fn main() {
     hbox.pack_start(&search_box, true, true, 0);
     let search_entry = gtk::Entry::new();
     search_entry.set_width_request(700);
-
-    let js_toggle = gtk::Switch::new();
-    js_toggle.set_state(true);
-    search_box.pack_start(&js_toggle, false, false, 0);
 
     let css_provider = gtk::CssProvider::new();
     css_provider
@@ -313,7 +322,6 @@ fn main() {
         settings::show_settings_window();
     });
 
-    connections::js_toggle_activate(&js_toggle, &notebook);
     connections::back_button_clicked(&notebook, &back_button);
     connections::forward_button_clicked(&notebook, &forward_button);
     connections::refresh_button_clicked(&notebook, &refresh_button);

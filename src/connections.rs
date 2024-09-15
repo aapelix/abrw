@@ -1,6 +1,6 @@
 extern crate gtk;
 
-use crate::{settings, tabs};
+use crate::tabs;
 use adblock::FilterSet;
 use gtk::prelude::*;
 use std::sync::{Arc, Mutex};
@@ -88,23 +88,6 @@ pub fn back_button_clicked(notebook: &gtk::Notebook, back_button: &gtk::Button) 
                     if webview.can_go_back() {
                         webview.go_back();
                     }
-                }
-            }
-        }
-    });
-}
-
-pub fn js_toggle_activate(js_toggle: &gtk::Switch, notebook: &gtk::Notebook) {
-    js_toggle.connect_active_notify({
-        let notebook = notebook.clone();
-
-        move |js_toggle| {
-            let current_page = notebook.current_page();
-            if let Some(widget) = notebook.nth_page(current_page) {
-                if let Some(webview) = widget.downcast_ref::<webkit2gtk::WebView>() {
-                    let webview = webview.clone();
-
-                    settings::toggle_javascript_when_running(webview, js_toggle.is_active());
                 }
             }
         }

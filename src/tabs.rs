@@ -38,6 +38,7 @@ pub fn add_webview_tab(
     web_view_settings.set_media_playback_requires_user_gesture(
         web_view_settings_json.media_playback_requires_user_gesture,
     );
+    web_view_settings.set_user_agent(Some("aapelix/abrw"));
 
     webview.load_uri(url);
 
@@ -52,7 +53,9 @@ pub fn add_webview_tab(
 
     // Create the tab label
     let label = gtk::Label::new(Some(title));
-    label.set_hexpand(true);
+
+    // Enable this if you want Safari like tabs
+    // label.set_hexpand(true);
     label.set_vexpand(false);
 
     hbox.pack_start(&label, true, true, 10);

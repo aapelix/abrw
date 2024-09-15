@@ -10,16 +10,13 @@ use webkit2gtk::{SettingsExt, WebViewExt};
 
 pub fn add_webview_tab(
     notebook: &gtk::Notebook,
-    url: &str,
+    _url: &str,
     title: &str,
     search_entry: &gtk::Entry,
     filter_set: &Arc<Mutex<FilterSet>>,
 ) {
-    let filter_set_guard = filter_set.lock().unwrap();
-
     let webview = webkit2gtk::WebView::new();
-
-    let engine = Engine::from_filter_set(filter_set_guard.clone(), true);
+    let engine = Engine::from_filter_set(filter_set.lock().unwrap().clone(), true);
 
     webview.connect_resource_load_started(move |webview, resource, request| {
         adblock_abrw::on_resource_load_started(webview, resource, request, &engine);
@@ -40,7 +37,57 @@ pub fn add_webview_tab(
     );
     web_view_settings.set_user_agent(Some("aapelix/abrw"));
 
-    webview.load_uri(url);
+    let html_data = r#"<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>abrw</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+                background-color: #0f0f0f;
+            }
+            .container {
+                text-align: center;
+            }
+            .search-bar {
+                width: 100%;
+                max-width: 600px;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 16px;
+            }
+            .search-bar:focus {
+                outline: none;
+                border-color: #007bff;
+            }
+            h1 {
+                color: white;
+                text-align: center;
+            }
+            a {
+                color: white;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>aapelix/abrw</h1>
+            <a href="https://github.com/aapelix/abrw">Source code</a>
+        </div>
+    </body>
+    </html>
+"#;
+
+    webview.load_html(&html_data, None);
 
     let search_entry_clone = search_entry.clone();
     webview.connect_notify_local(Some("uri"), move |webview, _| {
@@ -64,9 +111,29 @@ pub fn add_webview_tab(
 
     close_button.set_size_request(25, 25);
 
-    let close_label = gtk::Label::new(Some("X"));
-    close_button.set_relief(gtk::ReliefStyle::None);
+    let close_label = gtk::Label::new(Some("x"));
+
     close_button.add(&close_label);
+
+    let css_provider = gtk::CssProvider::new();
+    css_provider
+        .load_from_data(
+            b"
+        button {
+            background: transparent;
+            border: none;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background: #313131;
+        }
+    ",
+        )
+        .expect("Failed to load css");
+
+    let style_context = close_button.style_context();
+    style_context.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     hbox.pack_start(&close_button, false, false, 0);
 

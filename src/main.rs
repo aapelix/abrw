@@ -8,9 +8,11 @@ mod settings;
 mod tabs;
 
 use adblock::lists::{FilterSet, ParseOptions};
+use glib::MainContext;
 use gtk::{glib::Propagation, prelude::*};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use webkit2gtk::CookieManagerExt;
 use webkit2gtk::WebContext;
 use webkit2gtk::WebContextExt;
@@ -71,21 +73,27 @@ fn main() {
 
     let rules = Arc::new(Mutex::new(initial_rules));
 
-    // Enable parallel-safe mutable access to `filter_set` using Arc and Mutex
     let filter_set = Arc::new(Mutex::new(FilterSet::new(true)));
 
-    // Process each URL in parallel
-    urls.par_iter().for_each(|url| {
-        if let Ok(fetched_rules) = adblock_abrw::fetch_block_list(url) {
-            // Lock the Mutex to safely access and modify `rules`
-            let mut rules_guard = rules.lock().unwrap();
-            rules_guard.extend(fetched_rules);
+    let rules_clone = Arc::clone(&rules);
+    let filter_set_clone = Arc::clone(&filter_set);
 
-            // Lock the Mutex to safely access and modify `filter_set`
-            let mut filter_set_guard = filter_set.lock().unwrap();
-            filter_set_guard.add_filters(&*rules_guard, ParseOptions::default());
-        }
+    thread::spawn(move || {
+        urls.par_iter().for_each(|url| {
+            if let Ok(fetched_rules) = adblock_abrw::fetch_block_list(url) {
+                // Lock the Mutex to safely access and modify `rules`
+                let mut rules_guard = rules_clone.lock().unwrap();
+                rules_guard.extend(fetched_rules);
+
+                let mut filter_set_guard = filter_set_clone.lock().unwrap();
+                filter_set_guard.add_filters(&*rules_guard, ParseOptions::default());
+            }
+        });
+
+        MainContext::default().invoke(move || println!("Fetched ad block rules in the background"))
     });
+
+    // Process each URL in parallel
 
     let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -109,7 +117,7 @@ fn main() {
         }
 
         notebook header.top tabs tab:checked {
-            background: #303030;
+            background: #1a1a1a;
         }
 
         notebook header.top tabs tab:hover {
@@ -160,7 +168,7 @@ fn main() {
     let back_button_style = back_button.style_context();
     let forward_button_style = forward_button.style_context();
     let refresh_button_style = refresh_button.style_context();
-    let new_tab_button_style = refresh_button.style_context();
+    let new_tab_button_style = new_tab_button.style_context();
 
     back_button_style.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
     forward_button_style.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -168,8 +176,8 @@ fn main() {
     new_tab_button_style.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    hbox.pack_start(&search_box, true, true, 0);
     let search_entry = gtk::Entry::new();
+    hbox.pack_start(&search_box, true, true, 0);
     search_entry.set_width_request(700);
 
     let css_provider = gtk::CssProvider::new();
@@ -178,7 +186,7 @@ fn main() {
             b"
         .search-entry {
         border-radius: 7px;
-        background: #424242;
+        background: #1a1a1a;
         padding-right: 5px;
         padding-left: 5px;
         }
@@ -254,11 +262,11 @@ fn main() {
     maximize_style.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
     close_style.add_provider(&css_provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
-    search_box.pack_start(&search_entry, false, false, 0);
+    search_box.pack_start(&search_entry, true, true, 0);
     search_box.set_halign(gtk::Align::Center);
 
     vbox.pack_start(&hbox, false, false, 15);
-    vbox.pack_start(&notebook, true, true, 5);
+    vbox.pack_start(&notebook, true, true, 0);
 
     tabs::add_webview_tab(
         &notebook,
@@ -281,7 +289,8 @@ fn main() {
                     }
 
                     if !url.starts_with("http://") && !url.starts_with("https://") {
-                        if url.contains('.') && !url.contains(' ') {
+                        if url.contains('.') && !url.contains(' ') && url.contains("localhost:3000")
+                        {
                             webview.load_uri(&format!("https://{}", url));
                         } else {
                             let search_query = url.replace(" ", "+");

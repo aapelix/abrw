@@ -1,5 +1,5 @@
 pkgname=abrw-2
-pkgver=1.2
+pkgver=1.4
 pkgrel=1
 pkgdesc="Abrw"
 arch=('x86_64')
@@ -14,4 +14,5 @@ package() {
   install -Dm755 "$srcdir/../target/release/abrw-2" "$pkgdir/usr/bin/abrw-2"
   mkdir -p "$pkgdir/usr/share/applications"
   install -Dm644 "$srcdir/abrw-2.desktop" "$pkgdir/usr/share/applications/abrw-2.desktop"
+  install -Dm644 "$srcdir/icon.png" "$pkgdir/usr/share/pixmaps/myicon.png"
 }

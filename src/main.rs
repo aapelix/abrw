@@ -9,10 +9,12 @@ mod tabs;
 
 use adblock::lists::{FilterSet, ParseOptions};
 use glib::MainContext;
+use gtk::gdk_pixbuf::Pixbuf;
 use gtk::{glib::Propagation, prelude::*};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use url::Url;
 use webkit2gtk::CookieManagerExt;
 use webkit2gtk::WebContext;
 use webkit2gtk::WebContextExt;
@@ -36,6 +38,9 @@ fn main() {
     window.set_default_size(800, 600);
     window.set_decorated(false);
 
+    let icon = Pixbuf::from_file("src/icon.png").expect("Failed to load icon");
+    window.set_icon(Some(&icon));
+
     window.connect_button_press_event(|window, event| {
         if event.button() == 1 {
             window.begin_move_drag(
@@ -53,11 +58,7 @@ fn main() {
         String::from("-advertisement-management/"),
         String::from("-advertisement."),
         String::from("-advertisement/script."),
-
-        String::from("youtube.com##+js(set,yt.config_.openPopupConfig.supportedPopups.adBlockMessageViewModel, false)"),
-        String::from("youtube.com##+js(set, Object.prototype.adBlocksFound, 0)"),
-        String::from("youtube.com##+js(set, ytplayer.config.args.raw_player_response.adPlacements, [])"),
-        String::from("youtube.com##+js(set, Object.prototype.hasAllowedInstreamAd, true)"),
+        String::from("||youtube.com^$~jsrewrite"),
     ];
 
     let urls = vec![
@@ -104,24 +105,26 @@ fn main() {
         .load_from_data(
             b"
         notebook header.top tabs {
-            background: #212121;
+            background: #2F3136;
         }
 
         notebook header.top tabs tab {
-            background: transparent;
+            background: #2F3136;
             border: none;
             border-radius: 7px;
             margin: 4px;
             padding: 10px;
             transition-duration: 300ms;
+            color: #8E9297;
         }
 
         notebook header.top tabs tab:checked {
-            background: #1a1a1a;
+            background: #36393F;
+            color: #DCDDDE;
         }
 
         notebook header.top tabs tab:hover {
-            background: #3a3a3a;
+            background: #40444B;
         }
         ",
         )
@@ -159,7 +162,7 @@ fn main() {
                 transition-duration: 300ms;
             }
             button:hover {
-                background: #3a3a3a;
+                background: #5865F2;
             }
         ",
         )
@@ -186,13 +189,13 @@ fn main() {
             b"
         .search-entry {
         border-radius: 7px;
-        background: #1a1a1a;
+        background: #36393F;
         padding-right: 5px;
         padding-left: 5px;
         }
 
         .box {
-            background: #212121;
+            background: #2F3136;
         }
     ",
         )
@@ -228,18 +231,15 @@ fn main() {
         .load_from_data(
             b"
             button {
-                background: #2a2a2a;
+                background: transparent;
                 border-radius: 7px;
                 border: none;
                 box-shadow: none;
                 -gtk-icon-shadow: none;
                 text-shadow: none;
             }
-            .options_button {
-                background: transparent
-            }
             button:hover {
-                background: rgba(0, 0, 0, 0.5);
+                background: #5865F2;
             }
             .close_button:hover {
                 background: #fc3737;
@@ -288,17 +288,30 @@ fn main() {
                         return;
                     }
 
-                    if !url.starts_with("http://") && !url.starts_with("https://") {
-                        if url.contains('.') && !url.contains(' ') && url.contains("localhost:3000")
-                        {
-                            webview.load_uri(&format!("https://{}", url));
-                        } else {
+                    let mut url_str = url.to_string();
+                    if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
+                        url_str = format!("http://{}", url_str);
+                    }
+
+                    let url = match Url::parse(&url_str) {
+                        Ok(parsed_url) => parsed_url,
+                        Err(_) => {
                             let search_query = url.replace(" ", "+");
                             webview
                                 .load_uri(&format!("https://duckduckgo.com/?q={}", search_query));
+                            return;
                         }
+                    };
+
+                    if url.scheme() == "http" || url.scheme() == "https" || url.scheme() == "file" {
+                        webview.load_uri(&url.to_string());
+                    } else if url.scheme() == "localhost"
+                        || url.host_str().unwrap_or("").contains("localhost")
+                    {
+                        webview.load_uri(&url.to_string());
                     } else {
-                        webview.load_uri(&url);
+                        let search_query = url.to_string().replace(" ", "+");
+                        webview.load_uri(&format!("https://duckduckgo.com/?q={}", search_query));
                     }
                 }
             }

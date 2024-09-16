@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Abrw
 Exec=abrw-2
-Icon=my_app_icon
+Icon=src/icon.png
 Terminal=false
 Type=Application

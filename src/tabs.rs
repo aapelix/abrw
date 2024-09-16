@@ -52,7 +52,8 @@ pub fn add_webview_tab(
                 justify-content: center;
                 height: 100vh;
                 margin: 0;
-                background-color: #0f0f0f;
+                background-color: #36393F;
+                color: #DCDDDE;
             }
             .container {
                 text-align: center;
@@ -70,7 +71,6 @@ pub fn add_webview_tab(
                 border-color: #007bff;
             }
             h1 {
-                color: white;
                 text-align: center;
             }
             a {
@@ -81,7 +81,6 @@ pub fn add_webview_tab(
     <body>
         <div class="container">
             <h1>aapelix/abrw</h1>
-            <a href="https://github.com/aapelix/abrw">Source code</a>
         </div>
     </body>
     </html>

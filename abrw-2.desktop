@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Abrw
 Exec=abrw-2
-Icon=src/icon.png
+Icon=/usr/share/pixmaps/myicon.png
 Terminal=false
 Type=Application

@@ -12,6 +12,7 @@ use glib::MainContext;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::{glib::Propagation, prelude::*};
 use rayon::prelude::*;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use url::Url;
@@ -38,7 +39,8 @@ fn main() {
     window.set_default_size(800, 600);
     window.set_decorated(false);
 
-    let icon = Pixbuf::from_file("src/icon.png").expect("Failed to load icon");
+    let path = PathBuf::from("/usr/share/pixmaps/myicon.png");
+    let icon = Pixbuf::from_file(path).expect("Failed to load pixbuf");
     window.set_icon(Some(&icon));
 
     window.connect_button_press_event(|window, event| {
@@ -62,6 +64,7 @@ fn main() {
     ];
 
     let urls = vec![
+        "https://easylist.to/easylist/easylist.txt",
         "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt",
         "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt",
         "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt",

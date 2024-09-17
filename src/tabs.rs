@@ -4,7 +4,11 @@ extern crate webkit2gtk;
 
 use crate::{adblock_abrw, settings};
 use adblock::{lists::FilterSet, Engine};
-use gtk::prelude::*;
+use gtk::{
+    gdk_pixbuf::{InterpType, Pixbuf},
+    prelude::*,
+};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use webkit2gtk::{SettingsExt, WebViewExt};
 
@@ -42,7 +46,7 @@ pub fn add_webview_tab(
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>abrw</title>
+        <title>New tab</title>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -95,16 +99,83 @@ pub fn add_webview_tab(
         }
     });
 
+    let notebook_clone = notebook.clone();
+    webview.connect_title_notify(move |webview| {
+        let notebook = notebook_clone.clone();
+        let webview = webview.clone();
+
+        let title = webview
+            .title()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "Untitled".to_string());
+
+        println!("Title changed {}", title);
+
+        let current_page = notebook.current_page();
+
+        if let Some(page) = notebook.nth_page(current_page) {
+            if let Some(tab) = notebook.tab_label(&page) {
+                if let Some(tab_box) = tab.downcast_ref::<gtk::Container>() {
+                    for child in tab_box.children() {
+                        if let Some(label) = child.downcast_ref::<gtk::Label>() {
+                            label.set_label(&title);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // not working
+    //let notebook_clone = notebook.clone();
+    //webview.connect_favicon_notify(move |webview| {
+    //    println!("favicon changed");
+
+    //    let notebook = notebook_clone.clone();
+    //    let webview = webview.clone();
+
+    //    let title = webview.favicon();
+
+    //    let current_page = notebook.current_page();
+
+    //    if let Some(page) = notebook.nth_page(current_page) {
+    //        if let Some(tab) = notebook.tab_label(&page) {
+    //            if let Some(tab_box) = tab.downcast_ref::<gtk::Container>() {
+    //                for child in tab_box.children() {
+    //                    if let Some(image) = child.downcast_ref::<gtk::Image>() {
+    //                        if let Some(favicon) = title.clone() {
+    //                            let pixbuf_icon =
+    //                                gtk::gdk::pixbuf_get_from_surface(&favicon, 0, 0, 25, 25);
+
+    //                            image.set_from_pixbuf(pixbuf_icon.as_ref());
+    //                            image.show();
+    //                        }
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
+    //});
+
+    //     webview.connect_favicon_notify(move |webview| {});
+
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
-    // Create the tab label
+    let path = PathBuf::from("/usr/share/pixmaps/myicon.png");
+    let pixbuf_icon = Pixbuf::from_file(path).expect("Failed to create pixbuf");
+    let scaled_pixbuf = &pixbuf_icon.scale_simple(25, 25, InterpType::Bilinear);
+
+    let icon = gtk::Image::from_pixbuf(scaled_pixbuf.as_ref());
     let label = gtk::Label::new(Some(title));
+
+    icon.set_pixel_size(2000);
 
     // Enable this if you want Safari like tabs
     // label.set_hexpand(true);
     label.set_vexpand(false);
 
-    hbox.pack_start(&label, true, true, 10);
+    hbox.pack_start(&icon, false, false, 10);
+    hbox.pack_start(&label, false, false, 10);
 
     let close_button = gtk::Button::new();
 
@@ -140,6 +211,7 @@ pub fn add_webview_tab(
 
     webview.show();
     label.show();
+    icon.show();
     close_label.show();
     close_button.show();
     hbox.show();

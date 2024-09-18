@@ -60,7 +60,6 @@ fn main() {
         String::from("-advertisement-management/"),
         String::from("-advertisement."),
         String::from("-advertisement/script."),
-        String::from("||youtube.com^$~jsrewrite"),
     ];
 
     let urls = vec![
@@ -183,8 +182,16 @@ fn main() {
 
     let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     let search_entry = gtk::Entry::new();
-    hbox.pack_start(&search_box, true, true, 0);
+
     search_entry.set_width_request(700);
+    search_entry.set_icon_from_pixbuf(gtk::EntryIconPosition::Secondary, Some(&icon));
+    search_entry.set_icon_tooltip_text(gtk::EntryIconPosition::Secondary, Some("Site settings"));
+
+    search_entry.connect_icon_press(move |_, icon_pos, _| {
+        if icon_pos == gtk::EntryIconPosition::Secondary {
+            println!("Clicked popup")
+        }
+    });
 
     let css_provider = gtk::CssProvider::new();
     css_provider
@@ -268,7 +275,9 @@ fn main() {
     search_box.pack_start(&search_entry, true, true, 0);
     search_box.set_halign(gtk::Align::Center);
 
+    hbox.pack_start(&search_box, true, true, 0);
     vbox.pack_start(&hbox, false, false, 15);
+
     vbox.pack_start(&notebook, true, true, 0);
 
     tabs::add_webview_tab(

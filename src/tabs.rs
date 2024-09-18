@@ -209,6 +209,9 @@ pub fn add_webview_tab(
 
     let new_tab_index = notebook.append_page(&webview, Some(&hbox));
 
+    notebook.set_tab_reorderable(&webview, true);
+    notebook.set_tab_detachable(&webview, true);
+
     webview.show();
     label.show();
     icon.show();

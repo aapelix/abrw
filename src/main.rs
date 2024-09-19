@@ -6,6 +6,7 @@ mod connections;
 mod search;
 mod settings;
 mod tabs;
+mod utils;
 
 use adblock::lists::{FilterSet, ParseOptions};
 use gtk::gdk_pixbuf::Pixbuf;
@@ -18,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use url::Url;
+use utils::is_url;
 use webkit2gtk::CookieManagerExt;
 use webkit2gtk::WebContext;
 use webkit2gtk::WebContextExt;
@@ -185,6 +187,14 @@ fn main() {
     let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     let search_entry = gtk::Entry::new();
 
+    let completion = gtk::EntryCompletion::new();
+    search_entry.set_completion(Some(&completion));
+
+    let store = gtk::ListStore::new(&[gtk::glib::Type::STRING]);
+
+    completion.set_model(Some(&store));
+    completion.set_text_column(0);
+
     let (sender, receiver) = gtk::glib::MainContext::channel::<Result<Value, std::io::Error>>(
         gtk::glib::Priority::DEFAULT,
     );
@@ -193,7 +203,7 @@ fn main() {
         let text = e.text();
         let sender = sender.clone();
 
-        if !text.is_empty() {
+        if !text.is_empty() && !is_url(&text) {
             let text_clone = text.clone();
 
             thread::spawn(move || {
@@ -204,24 +214,47 @@ fn main() {
         };
     });
 
-    let search_entry_clone = search_entry.clone();
     receiver.attach(None, move |result| {
+        store.clear();
+
         match result {
             Ok(suggestions) => {
                 if let Some(suggestions_array) = suggestions.as_array() {
                     for suggestion in suggestions_array {
                         if let Some(phrase) = suggestion.get("phrase").and_then(Value::as_str) {
-                            // work in progress
+                            println!("{}", &phrase);
+                            store.insert_with_values(None, &[(0, &phrase.to_value())]);
+                            // THIS DOESNT WORK
                         }
                     }
+
+                    completion.set_model(Some(&store));
+                    completion.set_text_column(0);
                 }
             }
 
             Err(err) => println!("Error: {}", err),
         }
-
         ControlFlow::Continue
     });
+
+    let css_provider = gtk::CssProvider::new();
+    css_provider
+        .load_from_data(
+            b"
+        .search-entry {
+        border-radius: 7px;
+        background: #36393F;
+        padding-right: 5px;
+        padding-left: 5px;
+        }
+
+        .box {
+            background: #2F3136;
+        }
+    ",
+        )
+        .expect("Failed to load css");
 
     search_entry.set_width_request(700);
     search_entry.set_icon_from_pixbuf(gtk::EntryIconPosition::Secondary, Some(&icon));
@@ -340,10 +373,7 @@ fn main() {
                         return;
                     }
 
-                    let mut url_str = url.to_string();
-                    if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
-                        url_str = format!("http://{}", url_str);
-                    }
+                    let url_str = url.to_string();
 
                     let url = match Url::parse(&url_str) {
                         Ok(parsed_url) => parsed_url,
@@ -355,7 +385,10 @@ fn main() {
                         }
                     };
 
-                    if url.scheme() == "http" || url.scheme() == "https" || url.scheme() == "file" {
+                    if (url.scheme() == "http" && url.to_string().contains("."))
+                        || (url.scheme() == "https" && url.to_string().contains("."))
+                        || url.scheme() == "file"
+                    {
                         webview.load_uri(&url.to_string());
                     } else if url.scheme() == "localhost"
                         || url.host_str().unwrap_or("").contains("localhost")

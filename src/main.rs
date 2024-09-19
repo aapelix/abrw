@@ -1,17 +1,19 @@
-extern crate glib;
 extern crate gtk;
 extern crate webkit2gtk;
 
 mod adblock_abrw;
 mod connections;
+mod search;
 mod settings;
 mod tabs;
 
 use adblock::lists::{FilterSet, ParseOptions};
-use glib::MainContext;
 use gtk::gdk_pixbuf::Pixbuf;
+use gtk::glib::{ControlFlow, MainContext};
 use gtk::{glib::Propagation, prelude::*};
 use rayon::prelude::*;
+use search::fetch_suggestions;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -182,6 +184,44 @@ fn main() {
 
     let search_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     let search_entry = gtk::Entry::new();
+
+    let (sender, receiver) = gtk::glib::MainContext::channel::<Result<Value, std::io::Error>>(
+        gtk::glib::Priority::DEFAULT,
+    );
+
+    search_entry.connect_changed(move |e| {
+        let text = e.text();
+        let sender = sender.clone();
+
+        if !text.is_empty() {
+            let text_clone = text.clone();
+
+            thread::spawn(move || {
+                let result = fetch_suggestions(&text_clone);
+                println!("Fetched suggestions");
+                sender.send(result).expect("Failed to send");
+            });
+        };
+    });
+
+    let search_entry_clone = search_entry.clone();
+    receiver.attach(None, move |result| {
+        match result {
+            Ok(suggestions) => {
+                if let Some(suggestions_array) = suggestions.as_array() {
+                    for suggestion in suggestions_array {
+                        if let Some(phrase) = suggestion.get("phrase").and_then(Value::as_str) {
+                            // work in progress
+                        }
+                    }
+                }
+            }
+
+            Err(err) => println!("Error: {}", err),
+        }
+
+        ControlFlow::Continue
+    });
 
     search_entry.set_width_request(700);
     search_entry.set_icon_from_pixbuf(gtk::EntryIconPosition::Secondary, Some(&icon));

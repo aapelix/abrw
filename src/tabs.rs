@@ -1,4 +1,3 @@
-extern crate glib;
 extern crate gtk;
 extern crate webkit2gtk;
 

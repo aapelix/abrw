@@ -1,3 +1,6 @@
+# USE [aapelix/abrw-min](https://github.com/aapelix/abrw-min)
+This is an early version of abrw
+
 # Abrw - a fast and private browser powered by WebKit
 made with 🦀
 
